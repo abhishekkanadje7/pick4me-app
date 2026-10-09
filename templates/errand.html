@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Custom Errand{% endblock %}
+{% block content %}
+<div class="card" style="max-width:600px; margin:20px auto">
+  <h2>Custom Errand Request</h2>
+  <p class="muted">Need something from any local shop? Tell us what and where, and a commuter will pick it up.</p>
+  <form method="post" class="mt">
+    <div class="form-group">
+      <label>What do you need?</label>
+      <textarea name="item_desc" rows="2" required placeholder="e.g. 2 notebooks, 1 blue pen"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Shop name / location</label>
+      <input type="text" name="shop_name" required placeholder="e.g. Sai Stationery, Gate no. 2">
+    </div>
+    <div class="form-group">
+      <label>Estimated item cost (₹)</label>
+      <input type="number" name="est_cost" min="0" step="1" value="0">
+    </div>
+    <div class="form-group">
+      <label>Delivery address</label>
+      <textarea name="address" rows="2" required></textarea>
+    </div>
+    <div class="form-group">
+      <label>Shop distance</label>
+      <select name="zone">
+        {% for key, z in zones.items() %}
+          <option value="{{ key }}">{{ z[0] }} &mdash; ₹{{ z[1] }} ({{ z[2] }} min SLA)</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="rush" value="1"> Rush mode (+₹15)</label>
+    </div>
+    <button class="btn btn-success btn-block" type="submit">Create errand &amp; pay in advance</button>
+  </form>
+</div>
+{% endblock %}

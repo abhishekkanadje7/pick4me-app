@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Orders{% endblock %}
+{% block content %}
+<h2 class="section-title">
+  {% if session_role == 'shopper' %}My Deliveries{% elif session_role == 'admin' %}All Orders{% else %}My Orders{% endif %}
+</h2>
+
+{% if orders %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>#</th><th>Shop</th><th>Items</th><th>Total</th><th>Status</th><th>Payment</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for o in orders %}
+    <tr>
+      <td>{{ o.id }}</td>
+      <td>{{ o.shop_name }}{% if o.is_errand %} <span class="badge yellow">Errand</span>{% endif %}</td>
+      <td>{{ o.item_desc }}</td>
+      <td>₹{{ '%g' % o.total }}</td>
+      <td>
+        {% if o.status == 'delivered' %}<span class="badge green">delivered</span>
+        {% elif o.status == 'awaiting_payment' %}<span class="badge red">awaiting payment</span>
+        {% else %}<span class="badge blue">{{ o.status.replace('_', ' ') }}</span>{% endif %}
+      </td>
+      <td><span class="badge">{{ o.payment_status }}</span></td>
+      <td><a class="btn btn-outline btn-sm" href="{{ url_for('order_detail', id=o.id) }}">View</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="card"><p class="muted">No orders yet.</p></div>
+{% endif %}
+{% endblock %}

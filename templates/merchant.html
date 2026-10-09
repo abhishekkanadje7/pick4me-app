@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}My Shop{% endblock %}
+{% block content %}
+<h2 class="section-title">My Shop</h2>
+
+<div class="card">
+  <h3>{{ 'Shop profile' if shop else 'Create your shop' }}</h3>
+  <form method="post" class="mt">
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Shop name</label>
+        <input type="text" name="name" value="{{ shop.name if shop else '' }}" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <input type="text" name="category" value="{{ shop.category if shop else '' }}" placeholder="Stationery, Canteen, Medical...">
+      </div>
+      <div class="form-group">
+        <label>Address</label>
+        <input type="text" name="address" value="{{ shop.address if shop else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" name="phone" value="{{ shop.phone if shop else '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea name="description" rows="2">{{ shop.description if shop else '' }}</textarea>
+    </div>
+    <button class="btn" type="submit">{{ 'Save shop' if shop else 'Create shop' }}</button>
+  </form>
+</div>
+
+{% if shop %}
+<h3 class="section-title">Add a product</h3>
+<div class="card">
+  <form method="post" action="{{ url_for('add_product') }}">
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Product name</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Price (₹)</label>
+        <input type="number" name="price" min="0" step="0.5" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" name="description">
+    </div>
+    <div class="form-group">
+      <label>Stock</label>
+      <select name="in_stock">
+        <option value="1">In stock</option>
+        <option value="0">Out of stock</option>
+      </select>
+    </div>
+    <button class="btn btn-success" type="submit">Add product</button>
+  </form>
+</div>
+
+<h3 class="section-title">My products</h3>
+{% if products %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Name</th><th>Price</th><th>Stock</th><th></th></tr></thead>
+  <tbody>
+  {% for p in products %}
+    <tr>
+      <td>{{ p.name }}{% if p.description %}<div class="muted">{{ p.description }}</div>{% endif %}</td>
+      <td>₹{{ '%g' % p.price }}</td>
+      <td>{% if p.in_stock %}<span class="badge green">In stock</span>{% else %}<span class="badge red">Out</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('delete_product', id=p.id) }}" class="inline-form">
+          <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No products yet. Add your first product above.</p></div>
+{% endif %}
+{% endif %}
+{% endblock %}

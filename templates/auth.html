@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Register' if mode == 'register' else 'Login' }}{% endblock %}
+{% block content %}
+<div class="card auth-box">
+  {% if mode == 'register' %}
+    <h2>Create account</h2>
+    <form method="post" action="{{ url_for('register') }}" class="mt">
+      <div class="form-group">
+        <label>Full name</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="tel" name="phone">
+      </div>
+      <div class="form-group">
+        <label>Password (min 6 characters)</label>
+        <input type="password" name="password" minlength="6" required>
+      </div>
+      <div class="form-group">
+        <label>I want to join as</label>
+        <select name="role">
+          <option value="customer">Customer (order items)</option>
+          <option value="shopper">Shopper / Merchant (deliver &amp; sell)</option>
+        </select>
+      </div>
+      <button class="btn btn-block" type="submit">Register</button>
+    </form>
+    <p class="muted mt">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+  {% else %}
+    <h2>Welcome back</h2>
+    <form method="post" action="{{ url_for('login') }}" class="mt">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" required>
+      </div>
+      <button class="btn btn-block" type="submit">Login</button>
+    </form>
+    <p class="muted mt">New here? <a href="{{ url_for('register') }}">Create an account</a></p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ order.id }}{% endblock %}
+{% block content %}
+{% set steps = ['awaiting_payment', 'open', 'accepted', 'picked_up', 'on_the_way', 'delivered'] %}
+{% set labels = {'awaiting_payment': 'Payment', 'open': 'Open', 'accepted': 'Accepted', 'picked_up': 'Picked up', 'on_the_way': 'On the way', 'delivered': 'Delivered'} %}
+{% set idx = steps.index(order.status) if order.status in steps else 0 %}
+
+<div class="row-between">
+  <h2 class="section-title">Order #{{ order.id }}{% if order.is_errand %} <span class="badge yellow">Errand</span>{% endif %}</h2>
+  <a class="btn btn-outline btn-sm" href="{{ url_for('orders') }}">Back to orders</a>
+</div>
+
+<div class="timeline">
+  {% for s in steps %}
+    <span class="step {% if loop.index0 <= idx %}done{% endif %}">{{ labels[s] }}</span>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h3>Order details</h3>
+    <p><strong>Shop:</strong> {{ order.shop_name }}</p>
+    <p><strong>Items:</strong> {{ order.item_desc }}</p>
+    <p><strong>Deliver to:</strong> {{ order.address }}</p>
+    <p><strong>Distance:</strong> {{ zone_label }}{% if order.rush %} <span class="badge red">RUSH</span>{% endif %}</p>
+    <hr style="margin:10px 0; border:none; border-top:1px solid var(--border)">
+    <p class="row-between"><span>Items</span><span>₹{{ '%g' % order.items_total }}</span></p>
+    <p class="row-between"><span>Delivery fee</span><span>₹{{ '%g' % order.delivery_fee }}</span></p>
+    <p class="row-between"><strong>Total</strong><strong class="price">₹{{ '%g' % order.total }}</strong></p>
+    <p class="muted mt">Payment: <span class="badge">{{ order.payment_status }}</span> &middot; SLA: {{ order.sla_minutes }} min</p>
+    {% if customer %}<p class="muted">Customer: {{ customer.name }}{% if customer.phone and (is_shopper or session_role == 'admin') %} ({{ customer.phone }}){% endif %}</p>{% endif %}
+    {% if shopper %}<p class="muted">Deliverer: {{ shopper.name }}{% if shopper.phone and (is_customer or session_role == 'admin') %} ({{ shopper.phone }}){% endif %}</p>{% endif %}
+    {% if order.status == 'delivered' %}
+      <p class="mt">
+        {% if order.bonus %}<span class="badge green">+₹{{ '%g' % order.bonus }} speed bonus</span>{% endif %}
+        {% if order.penalty %}<span class="badge red">-₹{{ '%g' % order.penalty }} delay penalty</span>{% endif %}
+      </p>
+    {% endif %}
+  </div>
+
+  <div>
+    {# ---------- Customer: advance payment ---------- #}
+    {% if is_customer and order.payment_status == 'pending' %}
+    <div class="card qr-box">
+      <h3>Pay in advance (escrow)</h3>
+      <p class="muted">Scan the QR with any UPI app and pay <strong>₹{{ '%g' % order.total }}</strong>.</p>
+      <img src="{{ url_for('static', filename='upi_qr.png') }}" alt="UPI QR">
+      <p class="mt"><strong>UPI ID:</strong> {{ upi_id }}</p>
+      <form method="post" action="{{ url_for('confirm_payment', id=order.id) }}" class="mt">
+        <button class="btn btn-success btn-block" type="submit">I have paid</button>
+      </form>
+      <p class="muted mt">Your order is shown to shoppers only after payment. The money stays in escrow until you share your OTP at delivery.</p>
+    </div>
+    {% endif %}
+
+    {# ---------- Customer: secret OTP ---------- #}
+    {% if show_otp and order.payment_status != 'pending' and order.status != 'delivered' %}
+    <div class="card">
+      <h3>Your delivery OTP</h3>
+      <div class="otp-box">
+        <div class="otp">{{ order.otp }}</div>
+        <p class="muted">Tell this code to the deliverer only when you receive your items.</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ---------- Shopper: accept open order ---------- #}
+    {% if session_role == 'shopper' and order.status == 'open' and not is_customer %}
+    <div class="card">
+      <h3>Available task</h3>
+      <p class="muted">Accept this order to start the SLA timer.</p>
+      <form method="post" action="{{ url_for('accept_order', id=order.id) }}" class="mt">
+        <button class="btn btn-success btn-block" type="submit">Accept order</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {# ---------- Shopper: progress + OTP ---------- #}
+    {% if is_shopper and order.status in status_flow %}
+    <div class="card">
+      <h3>Delivery progress</h3>
+      {% if minutes_left is not none %}
+        {% if minutes_left >= 0 %}
+          <p><span class="badge blue">{{ minutes_left }} min left in SLA</span></p>
+        {% else %}
+          <p><span class="badge red">{{ -minutes_left }} min over SLA</span></p>
+        {% endif %}
+      {% endif %}
+      <div class="row mt">
+        {% for s in status_flow %}
+          {% if status_flow.index(s) > status_flow.index(order.status) %}
+          <form method="post" action="{{ url_for('update_status', id=order.id) }}" class="inline-form">
+            <input type="hidden" name="status" value="{{ s }}">
+            <button class="btn btn-outline btn-sm" type="submit">Mark {{ s.replace('_', ' ') }}</button>
+          </form>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <hr style="margin:14px 0; border:none; border-top:1px solid var(--border)">
+      <h3>Handover</h3>
+      <p class="muted">Ask the customer for their 4-digit OTP and enter it here to complete the delivery and release the payment.</p>
+      <form method="post" action="{{ url_for('verify_otp', id=order.id) }}" class="row mt">
+        <input type="text" name="otp" maxlength="4" pattern="[0-9]{4}" placeholder="4-digit OTP" style="width:160px" required>
+        <button class="btn btn-success" type="submit">Verify &amp; complete</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if order.status == 'delivered' %}
+    <div class="card">
+      <h3>Delivered ✅</h3>
+      <p class="muted">Delivered at {{ order.delivered_at }}. Payment has been released to the deliverer's wallet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

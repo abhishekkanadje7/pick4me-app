@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Cart{% endblock %}
+{% block content %}
+<h2 class="section-title">Your Cart</h2>
+
+{% if items %}
+{% set shop_count = items|map(attribute='shop_id')|unique|list|length %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Item</th><th>Shop</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for i in items %}
+    <tr>
+      <td>{{ i.name }}{% if not i.in_stock %} <span class="badge red">Out of stock</span>{% endif %}</td>
+      <td>{{ i.shop_name }}</td>
+      <td>₹{{ '%g' % i.price }}</td>
+      <td>{{ i.qty }}</td>
+      <td>₹{{ '%g' % (i.price * i.qty) }}</td>
+      <td>
+        <form method="post" action="{{ url_for('cart_remove', id=i.id) }}" class="inline-form">
+          <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="grid-2 mt">
+  <div class="card">
+    <h3>Delivery details</h3>
+    <form method="post" action="{{ url_for('cart_checkout') }}" id="checkout-form">
+      <div class="form-group">
+        <label>Delivery address (hostel / room / landmark)</label>
+        <textarea name="address" rows="2" required></textarea>
+      </div>
+      <div class="form-group">
+        <label>Shop distance</label>
+        <select name="zone" id="zone">
+          {% for key, z in zones.items() %}
+            <option value="{{ key }}" data-fee="{{ z[1] }}">{{ z[0] }} &mdash; ₹{{ z[1] }} ({{ z[2] }} min SLA)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="rush" id="rush" value="1"> Rush mode (+₹15, shown first to shoppers)</label>
+      </div>
+      <button class="btn btn-success btn-block" type="submit">Place order &amp; pay in advance</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Summary</h3>
+    <p class="row-between"><span>Items subtotal</span><strong>₹{{ '%g' % subtotal }}</strong></p>
+    <p class="row-between"><span>Delivery fee (<span id="shops">{{ shop_count }}</span> shop order{{ '' if shop_count == 1 else 's' }})</span><strong id="fee">₹0</strong></p>
+    <hr style="margin:10px 0; border:none; border-top:1px solid var(--border)">
+    <p class="row-between"><span>Estimated total</span><strong class="price" id="grand">₹{{ '%g' % subtotal }}</strong></p>
+    <p class="muted mt">Items from different shops become separate orders, each with its own delivery fee. Payment goes into escrow and is released only after the OTP is verified at delivery.</p>
+  </div>
+</div>
+
+  <div id="calc" data-subtotal="{{ subtotal }}" data-shops="{{ shop_count }}" hidden></div>
+<script>
+  const calc = document.getElementById('calc');
+  const subtotal = parseFloat(calc.dataset.subtotal);
+  const shops = parseInt(calc.dataset.shops);
+  function update() {
+    const base = parseFloat(document.getElementById('zone').selectedOptions[0].dataset.fee);
+    const rush = document.getElementById('rush').checked ? 15 : 0;
+    const fee = (base + rush) * shops;
+    document.getElementById('fee').textContent = '₹' + fee;
+    document.getElementById('grand').textContent = '₹' + (subtotal + fee);
+  }
+  document.getElementById('zone').addEventListener('change', update);
+  document.getElementById('rush').addEventListener('change', update);
+  update();
+</script>
+
+{% else %}
+<div class="card">
+  <p class="muted">Your cart is empty.</p>
+  <a class="btn mt" href="{{ url_for('index') }}">Browse products</a>
+</div>
+{% endif %}
+{% endblock %}

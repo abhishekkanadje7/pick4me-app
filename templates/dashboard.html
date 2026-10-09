@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+{# ================= CUSTOMER ================= #}
+{% if role == 'customer' %}
+<h2 class="section-title">Hello, {{ user.name }} 👋</h2>
+<div class="stats">
+  <div class="stat"><div class="muted">Total orders</div><div class="num">{{ stats.total }}</div></div>
+  <div class="stat"><div class="muted">Active orders</div><div class="num">{{ stats.active }}</div></div>
+</div>
+<div class="row">
+  <a class="btn" href="{{ url_for('index') }}">Browse shops</a>
+  <a class="btn btn-outline" href="{{ url_for('errand') }}">Custom errand</a>
+  <a class="btn btn-outline" href="{{ url_for('cart') }}">Cart</a>
+</div>
+
+<h3 class="section-title">Recent orders</h3>
+{% if recent %}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Shop</th><th>Total</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for o in recent %}
+    <tr>
+      <td>{{ o.id }}</td><td>{{ o.shop_name }}</td><td>₹{{ '%g' % o.total }}</td>
+      <td><span class="badge blue">{{ o.status.replace('_', ' ') }}</span></td>
+      <td><a class="btn btn-outline btn-sm" href="{{ url_for('order_detail', id=o.id) }}">View</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No orders yet. Start by browsing the shops.</p></div>
+{% endif %}
+
+{# ================= SHOPPER ================= #}
+{% elif role == 'shopper' %}
+<h2 class="section-title">Hello, {{ user.name }} 🚴</h2>
+{% if not user.verified %}
+<div class="flash warning">Your account is not KYC verified yet. You can accept deliveries only after the admin verifies you.</div>
+{% endif %}
+<div class="stats">
+  <div class="stat"><div class="muted">Wallet balance</div><div class="num">₹{{ '%g' % user.wallet }}</div></div>
+  <div class="stat"><div class="muted">Deliveries done</div><div class="num">{{ delivered }}</div></div>
+  <div class="stat"><div class="muted">KYC</div><div class="num" style="font-size:1.1rem">{% if user.verified %}<span class="badge green">Verified</span>{% else %}<span class="badge yellow">Pending</span>{% endif %}</div></div>
+</div>
+<div class="row"><a class="btn btn-outline" href="{{ url_for('merchant') }}">Manage my shop</a></div>
+
+<h3 class="section-title">Available tasks</h3>
+{% if open_orders %}
+<div class="grid">
+  {% for o in open_orders %}
+  <div class="card">
+    <div class="row-between">
+      <strong>#{{ o.id }} &middot; {{ o.shop_name }}</strong>
+      {% if o.rush %}<span class="badge red">RUSH</span>{% endif %}
+    </div>
+    <p class="muted">{{ o.item_desc }}</p>
+    <p class="mt">Earn: <span class="price">₹{{ '%g' % o.total }}</span></p>
+    <p class="muted">SLA {{ o.sla_minutes }} min</p>
+    <a class="btn btn-sm mt" href="{{ url_for('order_detail', id=o.id) }}">View &amp; accept</a>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">No open tasks right now.</p></div>
+{% endif %}
+
+<h3 class="section-title">My active deliveries</h3>
+{% if my_orders %}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Shop</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for o in my_orders %}
+    <tr>
+      <td>{{ o.id }}</td><td>{{ o.shop_name }}</td>
+      <td><span class="badge blue">{{ o.status.replace('_', ' ') }}</span></td>
+      <td><a class="btn btn-outline btn-sm" href="{{ url_for('order_detail', id=o.id) }}">Open</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No active deliveries.</p></div>
+{% endif %}
+
+<h3 class="section-title">Wallet ledger</h3>
+{% if txns %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Txn</th><th>Note</th><th>Amount</th><th>Date</th></tr></thead>
+  <tbody>
+  {% for t in txns %}
+    <tr><td>#TXN-{{ t.id }}</td><td>{{ t.note }}</td><td>+₹{{ '%g' % t.amount }}</td><td>{{ t.created_at }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No transactions yet.</p></div>
+{% endif %}
+
+{# ================= ADMIN ================= #}
+{% else %}
+<h2 class="section-title">Admin Control Center</h2>
+<div class="stats">
+  <div class="stat"><div class="muted">Users</div><div class="num">{{ stats.users }}</div></div>
+  <div class="stat"><div class="muted">Shops</div><div class="num">{{ stats.shops }}</div></div>
+  <div class="stat"><div class="muted">Orders</div><div class="num">{{ stats.orders }}</div></div>
+  <div class="stat"><div class="muted">In escrow</div><div class="num">₹{{ '%g' % stats.escrow }}</div></div>
+  <div class="stat"><div class="muted">Released</div><div class="num">₹{{ '%g' % stats.released }}</div></div>
+</div>
+
+<h3 class="section-title">Users &amp; KYC</h3>
+{% if users %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>KYC</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>{{ u.name }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td>
+      <td>{% if u.verified %}<span class="badge green">Verified</span>{% else %}<span class="badge yellow">Pending</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('toggle_verify', id=u.id) }}" class="inline-form">
+          <button class="btn btn-outline btn-sm" type="submit">{{ 'Unverify' if u.verified else 'Verify' }}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No users yet.</p></div>
+{% endif %}
+
+<h3 class="section-title">Shops</h3>
+{% if shops %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Shop</th><th>Category</th><th>Owner</th><th>Address</th></tr></thead>
+  <tbody>
+  {% for s in shops %}
+    <tr><td>{{ s.name }}</td><td>{{ s.category }}</td><td>{{ s.owner_name }}</td><td>{{ s.address }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No shops yet.</p></div>
+{% endif %}
+
+<h3 class="section-title">Recent orders</h3>
+{% if all_orders %}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Shop</th><th>Total</th><th>Status</th><th>Payment</th><th></th></tr></thead>
+  <tbody>
+  {% for o in all_orders %}
+    <tr>
+      <td>{{ o.id }}</td><td>{{ o.shop_name }}</td><td>₹{{ '%g' % o.total }}</td>
+      <td><span class="badge blue">{{ o.status.replace('_', ' ') }}</span></td>
+      <td><span class="badge">{{ o.payment_status }}</span></td>
+      <td><a class="btn btn-outline btn-sm" href="{{ url_for('order_detail', id=o.id) }}">View</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="card"><p class="muted">No orders yet.</p></div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

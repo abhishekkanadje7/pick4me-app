@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+{% if not shop and not q and not category and not max_price %}
+<div class="hero">
+  <h1>Local shops. Peer delivery. Zero hassle.</h1>
+  <p>Order from campus shops, or ask a fellow student to pick up anything for you.</p>
+</div>
+{% endif %}
+
+<form method="get" class="filters">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search products...">
+  <select name="category">
+    <option value="">All categories</option>
+    {% for c in categories %}
+      <option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+  <input type="number" step="1" min="0" name="max_price" value="{{ max_price or '' }}" placeholder="Max price">
+  {% if shop %}<input type="hidden" name="shop" value="{{ shop.id }}">{% endif %}
+  <button class="btn" type="submit">Search</button>
+</form>
+
+{% if shop %}
+<div class="card" style="margin-bottom:16px">
+  <div class="row-between">
+    <div>
+      <h3>{{ shop.name }} <span class="badge blue">{{ shop.category }}</span></h3>
+      <p class="muted">{{ shop.address }}{% if shop.phone %} &middot; {{ shop.phone }}{% endif %}</p>
+      {% if shop.description %}<p>{{ shop.description }}</p>{% endif %}
+    </div>
+    <a class="btn btn-outline btn-sm" href="{{ url_for('index') }}">View all shops</a>
+  </div>
+</div>
+{% endif %}
+
+{% if not shop %}
+<h2 class="section-title">Local Shops</h2>
+{% if shops %}
+<div class="grid">
+  {% for s in shops %}
+  <a href="{{ url_for('index', shop=s.id) }}" style="color:inherit; text-decoration:none">
+    <div class="card">
+      <h3>{{ s.name }}</h3>
+      <span class="badge blue">{{ s.category }}</span>
+      <p class="muted mt">{{ s.address or 'Address not added' }}</p>
+      <p class="muted">{{ s.product_count }} product{{ '' if s.product_count == 1 else 's' }}</p>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">No shops yet. Register as a Shopper/Merchant and create the first shop!</p></div>
+{% endif %}
+{% endif %}
+
+<h2 class="section-title">Products</h2>
+{% if products %}
+<div class="grid">
+  {% for p in products %}
+  <div class="card">
+    <h3>{{ p.name }}</h3>
+    <p class="muted">{{ p.shop_name }} &middot; {{ p.shop_category }}</p>
+    {% if p.description %}<p>{{ p.description }}</p>{% endif %}
+    <div class="row-between mt">
+      <span class="price">₹{{ '%g' % p.price }}</span>
+      {% if p.in_stock %}<span class="badge green">In stock</span>{% else %}<span class="badge red">Out of stock</span>{% endif %}
+    </div>
+    {% if p.in_stock %}
+      {% if session_role == 'customer' %}
+      <form method="post" action="{{ url_for('cart_add') }}" class="row mt">
+        <input type="hidden" name="product_id" value="{{ p.id }}">
+        <input type="number" name="qty" value="1" min="1" style="width:70px">
+        <button class="btn btn-sm" type="submit">Add to cart</button>
+      </form>
+      {% elif not session_role %}
+        <a class="btn btn-outline btn-sm mt" href="{{ url_for('login') }}">Login to order</a>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">No products found.</p></div>
+{% endif %}
+
+{% if session_role == 'customer' %}
+<div class="card mt">
+  <div class="row-between">
+    <div>
+      <h3>Can't find what you need?</h3>
+      <p class="muted">Create a custom errand and a commuter will pick it up from any local shop.</p>
+    </div>
+    <a class="btn" href="{{ url_for('errand') }}">Create custom errand</a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

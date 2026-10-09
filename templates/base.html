@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Pick4Me{% endblock %} | Pick4Me</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="inner">
+      <a class="brand" href="{{ url_for('index') }}">🛍️ Pick4Me</a>
+      <div class="nav-links">
+        <a href="{{ url_for('index') }}">Shop</a>
+        {% if session_role == 'customer' %}
+          <a href="{{ url_for('errand') }}">Custom Errand</a>
+          <a href="{{ url_for('cart') }}">Cart{% if cart_count %}<span class="cart-badge">{{ cart_count }}</span>{% endif %}</a>
+          <a href="{{ url_for('orders') }}">My Orders</a>
+          <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        {% elif session_role == 'shopper' %}
+          <a href="{{ url_for('dashboard') }}">Tasks &amp; Wallet</a>
+          <a href="{{ url_for('merchant') }}">My Shop</a>
+          <a href="{{ url_for('orders') }}">My Deliveries</a>
+        {% elif session_role == 'admin' %}
+          <a href="{{ url_for('dashboard') }}">Admin</a>
+          <a href="{{ url_for('orders') }}">All Orders</a>
+        {% endif %}
+        {% if session_role %}
+          <span style="color:#c7d2fe">Hi, {{ session_name }}</span>
+          <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+          <a href="{{ url_for('login') }}">Login</a>
+          <a class="btn btn-sm" style="background:var(--accent);color:#111" href="{{ url_for('register') }}">Register</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <div class="footer">Pick4Me &middot; Local Marketplace &amp; Peer Delivery</div>
+</body>
+</html>
