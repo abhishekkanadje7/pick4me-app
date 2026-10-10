@@ -1,9 +1,10 @@
 import os
-import sqlite3
 import random
 from datetime import datetime, timezone
 from functools import wraps
 
+import psycopg2
+import psycopg2.extras
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, flash, g)
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'change-me-in-production')
 
-DB_PATH = os.environ.get('DB_PATH', 'pick4me.db')
+DATABASE_URL = os.environ.get('DATABASE_URL')  # Neon connection string
 UPI_ID = os.environ.get('UPI_ID', '7387157739@upi')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'abhishekkanadje7@gmail.com')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')  # set this on Render
@@ -27,20 +28,22 @@ SPEED_BONUS = 10
 DELAY_PENALTY = 10
 STATUS_FLOW = ['accepted', 'picked_up', 'on_the_way']
 
-SCHEMA = """
+NOW_TEXT = "to_char(now() at time zone 'utc', 'YYYY-MM-DD HH24:MI:SS')"
+
+SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('customer','shopper','admin')),
     phone TEXT DEFAULT '',
     verified INTEGER DEFAULT 0,
-    wallet REAL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    wallet DOUBLE PRECISION DEFAULT 0,
+    created_at TEXT DEFAULT {NOW_TEXT}
 );
 CREATE TABLE IF NOT EXISTS shops (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     owner_id INTEGER NOT NULL REFERENCES users(id),
     name TEXT NOT NULL,
     category TEXT DEFAULT 'General',
@@ -49,28 +52,28 @@ CREATE TABLE IF NOT EXISTS shops (
     description TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     shop_id INTEGER NOT NULL REFERENCES shops(id),
     name TEXT NOT NULL,
-    price REAL NOT NULL,
+    price DOUBLE PRECISION NOT NULL,
     description TEXT DEFAULT '',
     in_stock INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS cart_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     product_id INTEGER NOT NULL REFERENCES products(id),
     qty INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     customer_id INTEGER NOT NULL REFERENCES users(id),
     shopper_id INTEGER REFERENCES users(id),
     shop_name TEXT DEFAULT '',
     item_desc TEXT NOT NULL,
-    items_total REAL DEFAULT 0,
-    delivery_fee REAL DEFAULT 0,
-    total REAL DEFAULT 0,
+    items_total DOUBLE PRECISION DEFAULT 0,
+    delivery_fee DOUBLE PRECISION DEFAULT 0,
+    total DOUBLE PRECISION DEFAULT 0,
     zone TEXT DEFAULT 'campus',
     rush INTEGER DEFAULT 0,
     is_errand INTEGER DEFAULT 0,
@@ -79,19 +82,19 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_status TEXT DEFAULT 'pending',
     status TEXT DEFAULT 'awaiting_payment',
     sla_minutes INTEGER DEFAULT 25,
-    bonus REAL DEFAULT 0,
-    penalty REAL DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    bonus DOUBLE PRECISION DEFAULT 0,
+    penalty DOUBLE PRECISION DEFAULT 0,
+    created_at TEXT DEFAULT {NOW_TEXT},
     accepted_at TEXT,
     delivered_at TEXT
 );
 CREATE TABLE IF NOT EXISTS wallet_transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     order_id INTEGER,
-    amount REAL NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
     note TEXT DEFAULT '',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT {NOW_TEXT}
 );
 """
 
@@ -99,11 +102,37 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
 # ====================================================================
 # PART 1: Database + auth helpers + register/login/logout
 # ====================================================================
+class DB:
+    """Small wrapper so the rest of the code can use db.execute(sql, params)
+    with '?' placeholders and read rows by name or by index."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def execute(self, sql, params=()):
+        cur = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute(sql.replace('?', '%s'), params)
+        return cur
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
+
+
+def connect():
+    if not DATABASE_URL:
+        raise RuntimeError('DATABASE_URL environment variable is not set.')
+    return psycopg2.connect(DATABASE_URL)
+
+
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys = ON')
+        g.db = DB(connect())
     return g.db
 
 
@@ -115,19 +144,21 @@ def close_db(e=None):
 
 
 def init_db():
-    db = sqlite3.connect(DB_PATH)
-    db.executescript(SCHEMA)
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(SCHEMA)
     if ADMIN_PASSWORD:
-        exists = db.execute('SELECT 1 FROM users WHERE email=?',
-                            (ADMIN_EMAIL,)).fetchone()
-        if not exists:
-            db.execute(
+        cur.execute('SELECT 1 FROM users WHERE email=%s', (ADMIN_EMAIL,))
+        if not cur.fetchone():
+            cur.execute(
                 "INSERT INTO users (name,email,password_hash,role,verified) "
-                "VALUES (?,?,?,?,1)",
+                "VALUES (%s,%s,%s,%s,1)",
                 ('Admin', ADMIN_EMAIL,
-                    generate_password_hash(ADMIN_PASSWORD, method='pbkdf2:sha256'), 'admin'))
-    db.commit()
-    db.close()
+                 generate_password_hash(ADMIN_PASSWORD, method='pbkdf2:sha256'),
+                 'admin'))
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def current_user():
@@ -169,7 +200,7 @@ def inject_globals():
         row = get_db().execute(
             'SELECT COALESCE(SUM(qty),0) FROM cart_items WHERE user_id=?',
             (session['user_id'],)).fetchone()
-        count = row[0]
+        count = int(row[0])
     return dict(cart_count=count, session_role=session.get('role'),
                 session_name=session.get('name'), upi_id=UPI_ID,
                 zones=ZONES)
@@ -194,7 +225,9 @@ def register():
             return render_template('auth.html', mode='register')
         db.execute(
             'INSERT INTO users (name,email,password_hash,role,phone) VALUES (?,?,?,?,?)',
-                        (name, email, generate_password_hash(password, method='pbkdf2:sha256'), role, phone))
+            (name, email,
+             generate_password_hash(password, method='pbkdf2:sha256'),
+             role, phone))
         db.commit()
         flash('Account created. Please login.', 'success')
         return redirect(url_for('login'))
@@ -252,7 +285,7 @@ def index():
            "FROM products p JOIN shops s ON s.id = p.shop_id WHERE 1=1")
     params = []
     if q:
-        sql += " AND (p.name LIKE ? OR p.description LIKE ?)"
+        sql += " AND (p.name ILIKE ? OR p.description ILIKE ?)"
         params += [f'%{q}%', f'%{q}%']
     if category:
         sql += " AND s.category = ?"
@@ -285,7 +318,7 @@ CART_SQL = (
     "s.name AS shop_name, s.id AS shop_id "
     "FROM cart_items c JOIN products p ON p.id = c.product_id "
     "JOIN shops s ON s.id = p.shop_id "
-    "WHERE c.user_id = ? ORDER BY s.id")
+    "WHERE c.user_id = ? ORDER BY s.id, c.id")
 
 
 @app.route('/cart')
@@ -364,10 +397,10 @@ def cart_checkout():
         cur = db.execute(
             "INSERT INTO orders (customer_id, shop_name, item_desc, items_total, "
             "delivery_fee, total, zone, rush, address, otp, sla_minutes) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
             (uid, rows[0]['shop_name'], desc, items_total, fee,
              items_total + fee, zone, rush, address, new_otp(), sla))
-        order_ids.append(cur.lastrowid)
+        order_ids.append(cur.fetchone()[0])
 
     db.execute('DELETE FROM cart_items WHERE user_id=?', (uid,))
     db.commit()
@@ -396,12 +429,13 @@ def errand():
         cur = db.execute(
             "INSERT INTO orders (customer_id, shop_name, item_desc, items_total, "
             "delivery_fee, total, zone, rush, is_errand, address, otp, sla_minutes) "
-            "VALUES (?,?,?,?,?,?,?,?,1,?,?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,1,?,?,?) RETURNING id",
             (session['user_id'], shop_name, item_desc, est_cost, fee,
              est_cost + fee, zone, rush, address, new_otp(), sla))
+        new_id = cur.fetchone()[0]
         db.commit()
         flash('Errand created. Please complete the advance payment.', 'success')
-        return redirect(url_for('order_detail', id=cur.lastrowid))
+        return redirect(url_for('order_detail', id=new_id))
     return render_template('errand.html')
 
 
@@ -741,5 +775,5 @@ def not_found(e):
 init_db()  # runs on import, so it also works with gunicorn on Render
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
+    port = int(os.environ.get('PORT', 5002))
     app.run(host='0.0.0.0', port=port, debug=False)
